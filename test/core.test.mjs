@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSms, categoryFromType } from '../src/parser.js';
+import { parseSms, categoryFromType, moneyFigures, reconcileNumbers } from '../src/parser.js';
 import { createRedactor } from '../src/redact.js';
 import { summarise } from '../src/insights.js';
 import { SAMPLE_SMS } from '../src/samples.js';
@@ -40,4 +40,13 @@ test('summary totals and fee share', () => {
   assert.equal(s.moneyOut, 15000 + 8700 + 2000 + 12000 + 30000 + 5000 + 4500 + 20000);
   assert.equal(s.fees, 250 + 100 + 700 + 100 + 250);
   assert.ok(s.feeShare > 0.01 && s.feeShare < 0.02);
+});
+
+test('model figures are checked against the figures written in the message', () => {
+  const sms = SAMPLE_SMS[8];
+  assert.deepEqual(moneyFigures(sms), [10000, 200, 42950]);
+  const fixed = reconcileNumbers({ type: 'sent', direction: 'out', amount: 10, fee: 200, balance: 42950, category: 'Family & friends' }, sms);
+  assert.equal(fixed.amount, 10000); assert.equal(fixed.fee, 200); assert.equal(fixed.balance, 42950);
+  const dropped = reconcileNumbers({ type: 'sent', direction: 'out', amount: 777, fee: 999, balance: 5, category: 'Other' }, sms);
+  assert.equal(dropped.amount, 10000); assert.equal(dropped.fee, 0); assert.equal(dropped.balance, undefined);
 });

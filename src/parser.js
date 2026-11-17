@@ -62,6 +62,35 @@ export function parseSms(text) {
   return { type: rule.type, direction, amount, fee, balance, when, party, source: 'rules' };
 }
 
+// Every RWF figure written in a message, in order.
+export function moneyFigures(text) {
+  const re = new RegExp(`${NUM}\\s*(?:RWF|FRW|Frw)|(?:RWF|FRW|Frw)\\s*${NUM}`, 'gi');
+  return [...String(text || '').matchAll(re)].map(m => toNumber(m[1] ?? m[2]));
+}
+
+// A model can misread "10,000" as 10. Keep only figures that are written in
+// the message: an exact match stays, a truncated one is matched to the written
+// figure it starts, anything else is dropped (the amount falls back to the
+// first figure in the message).
+export function reconcileNumbers(tx, text) {
+  const figs = moneyFigures(text);
+  if (!tx || !figs.length) return tx;
+  const fix = (v) => {
+    const n = Number(v);
+    if (v == null || !Number.isFinite(n)) return null;
+    if (figs.includes(n)) return n;
+    const digits = String(Math.round(n));
+    return figs.find(f => String(f).startsWith(digits)) ?? null;
+  };
+  const out = { ...tx, amount: fix(tx.amount) ?? figs[0] };
+  if (tx.fee != null) out.fee = fix(tx.fee) ?? 0;
+  if (tx.balance != null) {
+    const b = fix(tx.balance);
+    if (b == null) delete out.balance; else out.balance = b;
+  }
+  return out;
+}
+
 export const CATEGORIES = [
   'Family & friends', 'Food & groceries', 'Transport', 'Bills & utilities',
   'Airtime & data', 'Cash withdrawal', 'Business', 'Health', 'Education', 'Other',

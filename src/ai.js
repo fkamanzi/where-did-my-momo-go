@@ -11,7 +11,7 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, Schema } from 'firebase/ai';
-import { CATEGORIES } from './parser.js';
+import { CATEGORIES, reconcileNumbers } from './parser.js';
 
 let ai = null;
 // ?mode=cloud turns the on-device model off, to show the masked cloud path on any browser.
@@ -171,7 +171,7 @@ export async function readSms(sms, redactor) {
   if (await onDeviceReady()) {
     try {
       const r = await hybridCall(InferenceMode.ONLY_ON_DEVICE, READ_PROMPT + sms, { constraint: TX_JSON });
-      const tx = parseJson(r.text());
+      const tx = reconcileNumbers(parseJson(r.text()), sms);
       if (tx) return { ...tx, source: 'on-device' };
     } catch (e) {
       // on-device failed or timed out: fall through to the masked cloud path
@@ -179,7 +179,7 @@ export async function readSms(sms, redactor) {
   }
   const masked = redactor.redactText(sms);
   const r = await cloudOnly(CLOUD_JSON).generateContent(READ_PROMPT + masked);
-  const tx = parseJson(r.response.text());
+  const tx = reconcileNumbers(parseJson(r.response.text()), sms);
   if (!tx) throw new Error('No JSON in model answer');
   if (tx.party) tx.party = redactor.restore(tx.party);
   return { ...tx, source: 'cloud-masked', sentText: masked };
