@@ -3,7 +3,7 @@ import { parseSms, categoryFromType } from './parser.js';
 import { createRedactor } from './redact.js';
 import { summarise, rwf } from './insights.js';
 import { SAMPLE_SMS } from './samples.js';
-import { connect, checkOnDevice, downloadOnDeviceModel, readSms, categorise, writeInsights, state } from './ai.js';
+import { connect, checkOnDevice, downloadOnDeviceModel, warmOnDevice, startRun, readSms, categorise, writeInsights, state } from './ai.js';
 
 const $ = s => document.querySelector(s);
 const input = $('#sms');
@@ -82,35 +82,50 @@ function render(txs, sum, insight) {
     </section>`;
 }
 
+const SOURCE_WORDS = { 'rules': 'by rules', 'on-device': 'on this device', 'cloud-masked': 'in the cloud, masked' };
+function tally(txs) {
+  const n = {};
+  for (const t of txs) n[t.source] = (n[t.source] || 0) + 1;
+  return Object.entries(SOURCE_WORDS).filter(([k]) => n[k]).map(([k, w]) => `${n[k]} ${w}`).join(' · ');
+}
+
 async function analyse() {
   const lines = input.value.split(/\n+/).map(s => s.trim()).filter(Boolean);
   const redactor = createRedactor();
   const txs = [];
-  $('#status').textContent = `Reading ${lines.length} messages…`;
-  for (const sms of lines) {
-    let tx = parseSms(sms);
-    if (!tx && state.connected) {
-      try { tx = await readSms(sms, redactor); } catch (e) { console.warn(e); }
+  const go = $('#go');
+  go.disabled = true;
+  startRun();
+  try {
+    for (const [i, sms] of lines.entries()) {
+      $('#status').textContent = `Reading message ${i + 1} of ${lines.length}…` + (txs.length ? ` (${tally(txs)})` : '');
+      let tx = parseSms(sms);
+      if (!tx && state.connected) {
+        try { tx = await readSms(sms, redactor); } catch (e) { console.warn(e); }
+      }
+      if (!tx) continue;
+      tx.category = tx.category || categoryFromType(tx);
+      if (!tx.category && tx.direction === 'out' && state.connected) {
+        try {
+          const c = await categorise(tx, redactor);
+          tx.category = c.category;
+          if (tx.source === 'rules') tx.source = c.source;
+        } catch (e) { console.warn(e); }
+      }
+      if (!tx.category) tx.category = tx.direction === 'in' ? 'Income' : 'Other';
+      txs.push(tx);
     }
-    if (!tx) continue;
-    tx.category = tx.category || categoryFromType(tx);
-    if (!tx.category && tx.direction === 'out' && state.connected) {
-      try {
-        const c = await categorise(tx, redactor);
-        tx.category = c.category;
-        if (tx.source === 'rules') tx.source = c.source;
-      } catch (e) { console.warn(e); }
+    const sum = summarise(txs);
+    let insight = null;
+    if (state.connected && txs.length) {
+      $('#status').textContent = `Writing what it means… (${tally(txs)})`;
+      try { insight = await writeInsights(sum, redactor); } catch (e) { console.warn(e); }
     }
-    if (!tx.category) tx.category = tx.direction === 'in' ? 'Income' : 'Other';
-    txs.push(tx);
+    render(txs, sum, insight);
+    $('#status').textContent = `${txs.length} of ${lines.length} messages read: ${tally(txs)} · ${redactor.size()} names and numbers masked before any cloud call`;
+  } finally {
+    go.disabled = false;
   }
-  const sum = summarise(txs);
-  let insight = null;
-  if (state.connected && txs.length) {
-    try { insight = await writeInsights(sum, redactor); } catch (e) { console.warn(e); }
-  }
-  render(txs, sum, insight);
-  $('#status').textContent = `${txs.length} of ${lines.length} messages read · ${redactor.size()} names and numbers masked for any cloud call`;
 }
 
 async function boot() {
@@ -128,10 +143,18 @@ async function boot() {
       btn.disabled = true;
       try {
         show(await downloadOnDeviceModel((p) => { btn.textContent = `Downloading… ${Math.round(p * 100)}%`; }));
+        if (state.onDevice === 'available') warmOnDevice();
       } catch { show(await checkOnDevice()); }
     };
   };
   show(await checkOnDevice());
-  if (ok) setInterval(async () => { if (state.onDevice !== 'available') show(await checkOnDevice()); }, 15000);
+  if (ok && state.onDevice === 'available') warmOnDevice();
+  if (ok) {
+    const poll = setInterval(async () => {
+      if (state.onDevice === 'available') return clearInterval(poll);
+      show(await checkOnDevice());
+      if (state.onDevice === 'available') warmOnDevice();
+    }, 15000);
+  }
 }
 boot();

@@ -14,7 +14,7 @@ import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, Schema } fro
 import { CATEGORIES } from './parser.js';
 
 let ai = null;
-export const state = { connected: false, onDevice: 'unknown', lastSource: null };
+export const state = { connected: false, onDevice: 'unknown', lastSource: null, onDeviceFails: 0 };
 
 export async function connect() {
   let config;
@@ -38,31 +38,79 @@ export async function connect() {
   return true;
 }
 
-const ON_DEVICE_TIMEOUT_MS = 20000;
-function withTimeout(promise, ms) {
-  return Promise.race([promise, new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('on-device timeout')), ms))]);
-}
-// Use the on-device model only when it is ready; while Chrome is still
-// downloading it, the masked cloud path answers so the app never waits.
+const CLOUD_MODEL = 'gemini-3.5-flash-lite';
+// Text-only sessions. The SDK default also expects image input, which needs
+// the multimodal model and makes every session slower to create.
+const textOnly = () => ({
+  expectedInputs: [{ type: 'text', languages: ['en'] }],
+  expectedOutputs: [{ type: 'text', languages: ['en'] }],
+});
+// The first on-device call may load Gemini Nano into memory; later calls are quicker.
+const FIRST_CALL_MS = 60000;
+const NEXT_CALL_MS = 30000;
+let onDeviceCalls = 0;
+
+// Use the on-device model only when it is ready and has not just failed twice
+// in a row; otherwise the masked cloud path answers so the app never waits.
 async function onDeviceReady() {
-  return (await checkOnDevice()) === 'available';
+  return state.onDeviceFails < 2 && (await checkOnDevice()) === 'available';
+}
+export function startRun() { state.onDeviceFails = 0; }
+
+// Hold one session open so Chrome keeps the model in memory between messages.
+let warmSession = null;
+export async function warmOnDevice() {
+  if (warmSession || !('LanguageModel' in self)) return;
+  try { warmSession = await self.LanguageModel.create(textOnly()); } catch { /* stays cold */ }
 }
 
 // One-time download of Gemini Nano, started from a click (Chrome needs a user gesture).
 export async function downloadOnDeviceModel(onProgress) {
   if (!('LanguageModel' in self)) return 'unavailable';
   const session = await self.LanguageModel.create({
+    ...textOnly(),
     monitor(m) { m.addEventListener('downloadprogress', (e) => onProgress?.(e.loaded)); },
   });
   session.destroy?.();
   return checkOnDevice();
 }
 
+// Call Firebase AI Logic with a hard time limit on the on-device part. The abort
+// signal stops Chrome's prompt itself, so a slow call never queues in front of
+// the next message.
+async function hybridCall(mode, prompt, { constraint = null, cloud }) {
+  const ac = new AbortController();
+  const promptOptions = { signal: ac.signal };
+  if (constraint) promptOptions.responseConstraint = constraint;
+  const m = getGenerativeModel(ai, {
+    mode,
+    onDeviceParams: { createOptions: { ...textOnly(), signal: ac.signal }, promptOptions },
+    inCloudParams: cloud,
+  });
+  const timer = setTimeout(() => ac.abort(), onDeviceCalls++ === 0 ? FIRST_CALL_MS : NEXT_CALL_MS);
+  try {
+    const r = await m.generateContent(prompt);
+    if (r.response.inferenceSource === 'on_device') state.onDeviceFails = 0;
+    return r.response;
+  } catch (e) {
+    state.onDeviceFails++;
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    m.chromeAdapter?.oldSession?.destroy?.(); // free the session now, not at garbage collection
+  }
+}
+
+const CLOUD_LABEL = { model: CLOUD_MODEL, generationConfig: { temperature: 0 } };
+const CLOUD_PROSE = { model: CLOUD_MODEL, generationConfig: { temperature: 0.4 } };
+function cloudOnly(params) {
+  return getGenerativeModel(ai, { mode: InferenceMode.ONLY_IN_CLOUD, inCloudParams: params });
+}
+
 export async function checkOnDevice() {
   try {
     if (!('LanguageModel' in self)) return (state.onDevice = 'unavailable');
-    const a = await self.LanguageModel.availability();
+    const a = await self.LanguageModel.availability(textOnly());
     return (state.onDevice = a); // 'available' | 'downloadable' | 'downloading' | 'unavailable'
   } catch { return (state.onDevice = 'unavailable'); }
 }
@@ -96,22 +144,14 @@ const TX_SCHEMA = Schema.object({
   optionalProperties: ['fee', 'balance', 'when', 'party'],
 });
 
+const CLOUD_JSON = { model: CLOUD_MODEL, generationConfig: { responseMimeType: 'application/json', responseSchema: TX_SCHEMA, temperature: 0 } };
+const CATEGORY_JSON = { type: 'string', enum: CATEGORIES };
+
 const READ_PROMPT = `You read one mobile-money SMS (English, French or Kinyarwanda) and return JSON only.
 Fields: type, direction (in or out), amount (number, RWF), fee (number), balance (number), when (ISO date-time if present), party (the other side, as written), category (one of: ${CATEGORIES.join(', ')}).
 Copy numbers exactly as written; do not estimate. If a field is not in the message, leave it out.
 SMS:
 `;
-
-function model(mode, cloudJson) {
-  return getGenerativeModel(ai, {
-    mode,
-    onDeviceParams: { promptOptions: { responseConstraint: TX_JSON } },
-    inCloudParams: cloudJson ? {
-      model: 'gemini-3.5-flash-lite',
-      generationConfig: { responseMimeType: 'application/json', responseSchema: TX_SCHEMA, temperature: 0 },
-    } : { model: 'gemini-3.5-flash-lite', generationConfig: { temperature: 0.4 } },
-  });
-}
 
 function parseJson(text) {
   const m = String(text).match(/\{[\s\S]*\}/);
@@ -123,15 +163,15 @@ export async function readSms(sms, redactor) {
   if (!ai) throw new Error('AI is not connected');
   if (await onDeviceReady()) {
     try {
-      const r = await withTimeout(model(InferenceMode.ONLY_ON_DEVICE, true).generateContent(READ_PROMPT + sms), ON_DEVICE_TIMEOUT_MS);
-      const tx = parseJson(r.response.text());
+      const r = await hybridCall(InferenceMode.ONLY_ON_DEVICE, READ_PROMPT + sms, { constraint: TX_JSON });
+      const tx = parseJson(r.text());
       if (tx) return { ...tx, source: 'on-device' };
     } catch (e) {
       // on-device failed or timed out: fall through to the masked cloud path
     }
   }
   const masked = redactor.redactText(sms);
-  const r = await model(InferenceMode.ONLY_IN_CLOUD, true).generateContent(READ_PROMPT + masked);
+  const r = await cloudOnly(CLOUD_JSON).generateContent(READ_PROMPT + masked);
   const tx = parseJson(r.response.text());
   if (!tx) throw new Error('No JSON in model answer');
   if (tx.party) tx.party = redactor.restore(tx.party);
@@ -147,11 +187,11 @@ export async function categorise(tx, redactor) {
 Categories: ${CATEGORIES.join(', ')}. Answer with the category name only.`;
   if (await onDeviceReady()) {
     try {
-      const r = await withTimeout(model(InferenceMode.ONLY_ON_DEVICE, false).generateContent(prompt(tx.party)), ON_DEVICE_TIMEOUT_MS);
-      return { category: pickCategory(r.response.text()), source: 'on-device' };
+      const r = await hybridCall(InferenceMode.ONLY_ON_DEVICE, prompt(tx.party), { constraint: CATEGORY_JSON });
+      return { category: pickCategory(r.text()), source: 'on-device' };
     } catch { /* fall through to the masked cloud path */ }
   }
-  const r = await model(InferenceMode.ONLY_IN_CLOUD, false).generateContent(prompt(partyForCloud));
+  const r = await cloudOnly(CLOUD_LABEL).generateContent(prompt(partyForCloud));
   return { category: pickCategory(r.response.text()), source: 'cloud-masked' };
 }
 
@@ -172,8 +212,11 @@ export async function writeInsights(summary, redactor) {
   const prompt = `You are a friendly money coach in Rwanda. From these mobile-money totals for one month (RWF), write exactly 3 short insights and 1 practical action.
 Use only the numbers given; do not invent figures. Plain words, one line each, start each line with "- ".
 ${JSON.stringify(safe)}`;
-  const mode = (await onDeviceReady()) ? InferenceMode.PREFER_ON_DEVICE : InferenceMode.ONLY_IN_CLOUD;
-  const r = await model(mode, false).generateContent(prompt);
-  state.lastSource = r.response.inferenceSource || null;
-  return { text: redactor.restore(r.response.text()), source: r.response.inferenceSource || 'unknown' };
+  let r;
+  if (await onDeviceReady()) {
+    try { r = await hybridCall(InferenceMode.PREFER_ON_DEVICE, prompt, { cloud: CLOUD_PROSE }); } catch { /* cloud below */ }
+  }
+  if (!r) r = (await cloudOnly(CLOUD_PROSE).generateContent(prompt)).response;
+  state.lastSource = r.inferenceSource || 'in_cloud';
+  return { text: redactor.restore(r.text()), source: state.lastSource };
 }
