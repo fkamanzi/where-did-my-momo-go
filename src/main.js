@@ -56,7 +56,10 @@ function river(sum) {
 }
 
 function render(txs, sum, insight) {
-  const sent = txs.filter(t => t.sentText);
+  const sent = txs.filter(t => t.sentText).map(t => t.sentText);
+  if (insight && insight.source === 'in_cloud') {
+    sent.push(`insights, from totals only: money in ${rwf(sum.moneyIn)}, money out ${rwf(sum.moneyOut)}, fees ${rwf(sum.fees)}, ${sum.byCategory.length} category totals, people as pseudonyms`);
+  }
   const rows = txs.map(t => `<tr>
       <td>${esc(t.when ? t.when.replace('T', ' ') : '')}</td>
       <td>${esc(t.type)}</td>
@@ -82,7 +85,7 @@ function render(txs, sum, insight) {
       <tbody>${rows}</tbody></table>
     </section>
     ${sent.length ? `<details class="card sent"><summary>What left this device: ${sent.length} cloud call${sent.length > 1 ? 's' : ''}, names and numbers masked</summary>
-      <ol>${sent.map(t => `<li><code>${esc(t.sentText)}</code></li>`).join('')}</ol></details>` : ''}`;
+      <ol>${sent.map(t => `<li><code>${esc(t)}</code></li>`).join('')}</ol></details>` : ''}`;
 }
 
 const SOURCE_WORDS = { 'rules': 'by rules', 'on-device': 'on this device', 'cloud-masked': 'in the cloud, masked' };

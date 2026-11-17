@@ -162,7 +162,7 @@ function parseJson(text) {
   if (!m) return null;
   const tx = JSON.parse(m[0]);
   // The party is the name; a phone number in brackets after it is not.
-  if (tx.party) tx.party = String(tx.party).replace(/\s*\(\s*\+?\d[\d\s-]{5,}\)\s*$/, '').trim();
+  if (tx.party) tx.party = String(tx.party).replace(/\s*\(\s*(?:\+?\d[\d\s-]{5,}|#\d+)\s*\)\s*$/, '').trim();
   return tx;
 }
 
