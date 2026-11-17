@@ -3,7 +3,7 @@ import { parseSms, categoryFromType } from './parser.js';
 import { createRedactor } from './redact.js';
 import { summarise, rwf } from './insights.js';
 import { SAMPLE_SMS } from './samples.js';
-import { connect, checkOnDevice, readSms, categorise, writeInsights, state } from './ai.js';
+import { connect, checkOnDevice, downloadOnDeviceModel, readSms, categorise, writeInsights, state } from './ai.js';
 
 const $ = s => document.querySelector(s);
 const input = $('#sms');
@@ -117,9 +117,21 @@ async function boot() {
   $('#sample').onclick = () => { input.value = SAMPLE_SMS.join('\n'); };
   $('#go').onclick = analyse;
   const ok = await connect();
-  const dev = await checkOnDevice();
-  $('#ai-state').innerHTML = ok
-    ? `Firebase AI connected · on-device model: <b>${esc(dev)}</b>`
-    : 'Rules only: add firebase-config.json to turn on AI (see README).';
+  const show = (dev) => {
+    $('#ai-state').innerHTML = ok
+      ? `Firebase AI connected · on-device model: <b>${esc(dev)}</b>` +
+        (dev === 'downloadable' ? ' <button id="nano" class="ghost">Download Gemini Nano (one time)</button>' : '') +
+        (dev === 'downloading' ? ' (until it finishes, messages use the masked cloud path)' : '')
+      : 'Rules only: add firebase-config.json to turn on AI (see README).';
+    const btn = $('#nano');
+    if (btn) btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        show(await downloadOnDeviceModel((p) => { btn.textContent = `Downloading… ${Math.round(p * 100)}%`; }));
+      } catch { show(await checkOnDevice()); }
+    };
+  };
+  show(await checkOnDevice());
+  if (ok) setInterval(async () => { if (state.onDevice !== 'available') show(await checkOnDevice()); }, 15000);
 }
 boot();

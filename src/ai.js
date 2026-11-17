@@ -38,6 +38,27 @@ export async function connect() {
   return true;
 }
 
+const ON_DEVICE_TIMEOUT_MS = 20000;
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('on-device timeout')), ms))]);
+}
+// Use the on-device model only when it is ready; while Chrome is still
+// downloading it, the masked cloud path answers so the app never waits.
+async function onDeviceReady() {
+  return (await checkOnDevice()) === 'available';
+}
+
+// One-time download of Gemini Nano, started from a click (Chrome needs a user gesture).
+export async function downloadOnDeviceModel(onProgress) {
+  if (!('LanguageModel' in self)) return 'unavailable';
+  const session = await self.LanguageModel.create({
+    monitor(m) { m.addEventListener('downloadprogress', (e) => onProgress?.(e.loaded)); },
+  });
+  session.destroy?.();
+  return checkOnDevice();
+}
+
 export async function checkOnDevice() {
   try {
     if (!('LanguageModel' in self)) return (state.onDevice = 'unavailable');
@@ -100,12 +121,14 @@ function parseJson(text) {
 // Read one SMS. Returns a transaction with `source` saying where it ran.
 export async function readSms(sms, redactor) {
   if (!ai) throw new Error('AI is not connected');
-  try {
-    const r = await model(InferenceMode.ONLY_ON_DEVICE, true).generateContent(READ_PROMPT + sms);
-    const tx = parseJson(r.response.text());
-    if (tx) return { ...tx, source: 'on-device' };
-  } catch (e) {
-    // no on-device model: fall through to the masked cloud path
+  if (await onDeviceReady()) {
+    try {
+      const r = await withTimeout(model(InferenceMode.ONLY_ON_DEVICE, true).generateContent(READ_PROMPT + sms), ON_DEVICE_TIMEOUT_MS);
+      const tx = parseJson(r.response.text());
+      if (tx) return { ...tx, source: 'on-device' };
+    } catch (e) {
+      // on-device failed or timed out: fall through to the masked cloud path
+    }
   }
   const masked = redactor.redactText(sms);
   const r = await model(InferenceMode.ONLY_IN_CLOUD, true).generateContent(READ_PROMPT + masked);
@@ -122,13 +145,14 @@ export async function categorise(tx, redactor) {
   const partyForCloud = isBusiness ? tx.party : `${redactor.redactParty(tx.party)} (an individual)`;
   const prompt = (party) => `Pick one category for a mobile-money ${tx.type} of ${tx.amount} RWF to "${party}".
 Categories: ${CATEGORIES.join(', ')}. Answer with the category name only.`;
-  try {
-    const r = await model(InferenceMode.ONLY_ON_DEVICE, false).generateContent(prompt(tx.party));
-    return { category: pickCategory(r.response.text()), source: 'on-device' };
-  } catch {
-    const r = await model(InferenceMode.ONLY_IN_CLOUD, false).generateContent(prompt(partyForCloud));
-    return { category: pickCategory(r.response.text()), source: 'cloud-masked' };
+  if (await onDeviceReady()) {
+    try {
+      const r = await withTimeout(model(InferenceMode.ONLY_ON_DEVICE, false).generateContent(prompt(tx.party)), ON_DEVICE_TIMEOUT_MS);
+      return { category: pickCategory(r.response.text()), source: 'on-device' };
+    } catch { /* fall through to the masked cloud path */ }
   }
+  const r = await model(InferenceMode.ONLY_IN_CLOUD, false).generateContent(prompt(partyForCloud));
+  return { category: pickCategory(r.response.text()), source: 'cloud-masked' };
 }
 
 function pickCategory(text) {
@@ -148,7 +172,8 @@ export async function writeInsights(summary, redactor) {
   const prompt = `You are a friendly money coach in Rwanda. From these mobile-money totals for one month (RWF), write exactly 3 short insights and 1 practical action.
 Use only the numbers given; do not invent figures. Plain words, one line each, start each line with "- ".
 ${JSON.stringify(safe)}`;
-  const r = await model(InferenceMode.PREFER_ON_DEVICE, false).generateContent(prompt);
+  const mode = (await onDeviceReady()) ? InferenceMode.PREFER_ON_DEVICE : InferenceMode.ONLY_IN_CLOUD;
+  const r = await model(mode, false).generateContent(prompt);
   state.lastSource = r.response.inferenceSource || null;
   return { text: redactor.restore(r.response.text()), source: r.response.inferenceSource || 'unknown' };
 }
