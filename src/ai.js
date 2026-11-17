@@ -47,7 +47,7 @@ const textOnly = () => ({
 });
 // The first on-device call may load Gemini Nano into memory; later calls are quicker.
 const FIRST_CALL_MS = 60000;
-const NEXT_CALL_MS = 30000;
+const NEXT_CALL_MS = 40000;
 let onDeviceCalls = 0;
 
 // Use the on-device model only when it is ready and has not just failed twice
