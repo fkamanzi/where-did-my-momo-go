@@ -29,12 +29,12 @@ Without Firebase it runs in rules-only mode (SMS in standard English formats).
 
 ## Connect your own Firebase project
 
-The live demo already runs on the `where-did-my-momo-go` Firebase project (Spark plan, Gemini Developer API, App Check enforced with reCAPTCHA Enterprise). To run a fork on your own project:
+The live demo already runs on the `where-did-my-momo-go` Firebase project (Spark plan, Gemini Developer API, App Check enforced with reCAPTCHA Enterprise). Its web config is committed in `public/firebase-config.json`: Firebase web configs are public identifiers by design, and App Check enforcement plus the reCAPTCHA domain list (fkamanzi.github.io only) are what protect the Gemini calls. To run a fork on your own project:
 
 1. Firebase console → create a project → **AI Logic** → **Get started** → **Gemini Developer API** (App Check enforcement is switched on for AI Logic).
 2. **Project settings → Your apps → Add app → Web**, and copy the `firebaseConfig` snippet.
 3. In Google Cloud console → **Security → reCAPTCHA (Fraud Defense)**, create a Web key for your domain, then in Firebase **App Check → Apps** register the web app with that site key. Put the site key in `public/app-check.json`.
-4. In your GitHub fork: **Settings → Secrets and variables → Actions → Variables → New repository variable** named `FIREBASE_CONFIG`, value = the snippet from step 2 (plain JSON or the `const firebaseConfig = {…}` text both work). **Settings → Pages → Source: GitHub Actions.** Every push to `main` runs the tests, writes `firebase-config.json` from that variable (`scripts/write-config.mjs`) and deploys.
+4. In your GitHub fork: **Settings → Secrets and variables → Actions → Variables → New repository variable** named `FIREBASE_CONFIG`, value = the snippet from step 2 (plain JSON or the `const firebaseConfig = {…}` text both work); it overrides the committed file at build time. **Settings → Pages → Source: GitHub Actions.** Every push to `main` runs the tests, writes `firebase-config.json` from that variable (`scripts/write-config.mjs`) and deploys.
 5. Local testing: put the same JSON plus `recaptchaEnterpriseSiteKey` in `public/firebase-config.json` (git-ignored), run `npm run dev`, and register the App Check debug token the browser console prints under **App Check → Apps → Manage debug tokens**.
 
 ## Demo video (under 3 minutes)

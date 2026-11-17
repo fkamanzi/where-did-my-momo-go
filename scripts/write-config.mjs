@@ -6,7 +6,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const raw = (process.env.FIREBASE_CONFIG || '').trim();
 if (!raw) {
-  console.warn('FIREBASE_CONFIG is empty: building in rules-only mode (no Firebase AI Logic).');
+  // No variable set: keep the committed public/firebase-config.json (the live demo's web config).
+  console.log('FIREBASE_CONFIG is empty: using the committed public/firebase-config.json.');
   process.exit(0);
 }
 const body = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
