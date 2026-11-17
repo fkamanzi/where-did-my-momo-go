@@ -151,13 +151,18 @@ const CATEGORY_JSON = { type: 'string', enum: CATEGORIES };
 
 const READ_PROMPT = `You read one mobile-money SMS (English, French or Kinyarwanda) and return JSON only.
 Fields: type, direction (in or out), amount (number, RWF), fee (number), balance (number), when (ISO date-time if present), party (the other side, as written), category (one of: ${CATEGORIES.join(', ')}).
+A transfer to a person ("transferred", "sent", "envoyé", "Mwohereje") is type sent.
 Copy numbers exactly as written; do not estimate. If a field is not in the message, leave it out.
 SMS:
 `;
 
 function parseJson(text) {
   const m = String(text).match(/\{[\s\S]*\}/);
-  return m ? JSON.parse(m[0]) : null;
+  if (!m) return null;
+  const tx = JSON.parse(m[0]);
+  // The party is the name; a phone number in brackets after it is not.
+  if (tx.party) tx.party = String(tx.party).replace(/\s*\(\s*\+?\d[\d\s-]{5,}\)\s*$/, '').trim();
+  return tx;
 }
 
 // Read one SMS. Returns a transaction with `source` saying where it ran.
@@ -220,5 +225,6 @@ ${JSON.stringify(safe)}`;
   }
   if (!r) r = (await cloudOnly(CLOUD_PROSE).generateContent(prompt)).response;
   state.lastSource = r.inferenceSource || 'in_cloud';
-  return { text: redactor.restore(r.text()), source: state.lastSource };
+  const text = redactor.restore(r.text()).trim().replace(/\n\s*\n+/g, '\n');
+  return { text, source: state.lastSource };
 }

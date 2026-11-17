@@ -126,7 +126,11 @@ async function analyse() {
       try { insight = await writeInsights(sum, redactor); } catch (e) { console.warn(e); }
     }
     render(txs, sum, insight);
-    $('#status').textContent = `${txs.length} of ${lines.length} messages read: ${tally(txs)} · ${redactor.size()} names and numbers masked before any cloud call`;
+    const cloudCalls = txs.filter(t => t.sentText).length + (insight && insight.source === 'in_cloud' ? 1 : 0);
+    const privacy = cloudCalls
+      ? `${cloudCalls} cloud call${cloudCalls > 1 ? 's' : ''}, names and numbers masked first`
+      : 'nothing was sent to the cloud';
+    $('#status').textContent = `${txs.length} of ${lines.length} messages read: ${tally(txs)} · ${privacy}`;
   } finally {
     go.disabled = false;
   }
