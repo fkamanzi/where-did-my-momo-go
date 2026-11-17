@@ -2,7 +2,7 @@
 
 See where your mobile money went, from the SMS your wallet already sends you. Built for #BuildHybridAI 2026 with **Firebase AI Logic hybrid inference**.
 
-**Live demo:** https://fkamanzi.github.io/where-did-my-momo-go/ (best in desktop Chrome with the built-in Gemini Nano model; other browsers use the masked cloud path).
+**Live demo:** https://where-did-my-momo-go.web.app (Firebase Hosting; mirror: https://fkamanzi.github.io/where-did-my-momo-go/). Best in desktop Chrome with the built-in Gemini Nano model; other browsers use the masked cloud path.
 
 **Privacy by design:** raw SMS are read by Gemini Nano on your device. If your device has no on-device model, each message is masked first (names, phone numbers, meter and transaction IDs become pseudonyms such as `Person-A`, `#3`) and only then sent to Gemini in the cloud. The pseudonym map never leaves the browser, so answers are mapped back to real names locally.
 
@@ -34,7 +34,7 @@ The live demo already runs on the `where-did-my-momo-go` Firebase project (Spark
 1. Firebase console → create a project → **AI Logic** → **Get started** → **Gemini Developer API** (App Check enforcement is switched on for AI Logic).
 2. **Project settings → Your apps → Add app → Web**, and copy the `firebaseConfig` snippet.
 3. In Google Cloud console → **Security → reCAPTCHA (Fraud Defense)**, create a Web key for your domain, then in Firebase **App Check → Apps** register the web app with that site key. Put the site key in `public/app-check.json`.
-4. In your GitHub fork: **Settings → Secrets and variables → Actions → Variables → New repository variable** named `FIREBASE_CONFIG`, value = the snippet from step 2 (plain JSON or the `const firebaseConfig = {…}` text both work); it overrides the committed file at build time. **Settings → Pages → Source: GitHub Actions.** Every push to `main` runs the tests, writes `firebase-config.json` from that variable (`scripts/write-config.mjs`) and deploys.
+4. In your GitHub fork: **Settings → Secrets and variables → Actions → Variables → New repository variable** named `FIREBASE_CONFIG`, value = the snippet from step 2 (plain JSON or the `const firebaseConfig = {…}` text both work); it overrides the committed file at build time. **Settings → Pages → Source: GitHub Actions.** Every push to `main` runs the tests, writes `firebase-config.json` from that variable (`scripts/write-config.mjs`) and deploys to GitHub Pages. For Firebase Hosting: `npm run build && firebase deploy --only hosting` (config in `firebase.json`).
 5. Local testing: put the same JSON plus `recaptchaEnterpriseSiteKey` in `public/firebase-config.json` (git-ignored), run `npm run dev`, and register the App Check debug token the browser console prints under **App Check → Apps → Manage debug tokens**.
 
 ## Demo video (under 3 minutes)
