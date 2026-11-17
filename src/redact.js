@@ -17,13 +17,20 @@ export function createRedactor() {
     return t;
   }
 
+  // A name: capitalised words, allowing particles such as "de" or "van" inside.
+  const NAME = String.raw`[A-Z][A-Za-z'’.-]+(?:\s+(?:(?:de|du|des|la|le|van|von|bin|wa)\s+)?[A-Z][A-Za-z'’.-]+){0,4}`;
+  const isToken = s => /^Person-[A-Z]\d*$/.test(s);
+
   function redactText(text) {
     let out = String(text);
     // phone numbers, account, meter and transaction ids (6+ digits)
     out = out.replace(/\+?\d[\d ]{5,}\d/g, m => (/^\d{1,3}([ ,]\d{3})+$/.test(m.trim()) ? m : token(m.replace(/\s/g, ''), 'number')));
-    // capitalised name sequences after to/from/agent
-    out = out.replace(/\b(to|from|agent|by)\s+([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3})/g,
-      (_, w, name) => `${w} ${token(name, 'person')}`);
+    // names after to/from/agent/by, and the French, Kinyarwanda and Swahili equivalents
+    out = out.replace(new RegExp(String.raw`\b(to|from|agent|by|à|de|par|vers|kuri|kwa|kutoka)\s+(${NAME})`, 'g'),
+      (m, w, name) => (isToken(name) ? m : `${w} ${token(name, 'person')}`));
+    // any remaining name written just before a masked number, as in "Name (#1)"
+    out = out.replace(new RegExp(String.raw`(${NAME})(\s*\(#\d+\))`, 'g'),
+      (m, name, num) => (isToken(name) ? m : `${token(name, 'person')}${num}`));
     return out;
   }
 

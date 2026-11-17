@@ -67,3 +67,16 @@ test('insight lines that quote a figure not in the totals are left out', () => {
   assert.ok(!g.text.includes('breakdown'));
   assert.equal(g.text.split('\n').length, 3);
 });
+
+test('names are masked in Kinyarwanda and French messages too', () => {
+  const r = createRedactor();
+  const rw = r.redactText(SAMPLE_SMS[8]);
+  assert.ok(!rw.includes('Claudine'), rw);
+  assert.ok(!rw.includes('250788100005'), rw);
+  assert.ok(rw.includes('10,000 RWF'), rw);
+  const fr = r.redactText('Vous avez envoyé 5 000 FRW à Jean de Dieu Nkusi (250788123456) le 02/11/2026 10:00.');
+  assert.ok(!/Jean|Dieu|Nkusi|250788123456/.test(fr), fr);
+  assert.ok(fr.includes('5 000 FRW'), fr);
+  const en = r.redactText(SAMPLE_SMS[1]);
+  assert.equal(r.restore(en), SAMPLE_SMS[1]);
+});

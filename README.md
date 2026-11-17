@@ -22,7 +22,7 @@ Every figure on screen (totals, fees, fee share, biggest outflow) is computed by
 
 ```bash
 npm install
-npm test          # parser, masking, totals and figure checks (7 tests)
+npm test          # parser, masking, totals and figure checks (8 tests)
 npm run dev       # http://localhost:5173
 npm run build     # static site in dist/
 ```
