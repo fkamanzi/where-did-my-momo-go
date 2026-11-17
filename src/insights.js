@@ -33,3 +33,39 @@ export function summarise(txs) {
 export function rwf(n) {
   return `${Math.round(n).toLocaleString('en-US')} RWF`;
 }
+
+const NUM_IN_TEXT = /\d{1,3}(?:[ ,]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
+function numbersIn(line) {
+  return (String(line).match(NUM_IN_TEXT) || []).map(s => Number(s.replace(/[ ,]/g, '')));
+}
+
+// The figures a model may quote: exactly the totals it was given.
+export function allowedFigures(sum) {
+  return [sum.moneyIn, sum.moneyOut, sum.fees, Math.round(sum.feeShare * 1000) / 10,
+    sum.moneyIn - sum.moneyOut - sum.fees,
+    ...sum.byCategory.map(([, v]) => v), ...sum.topParties.map(([, v]) => v)];
+}
+
+// Plain-code insights, used when too few model lines pass the figure check.
+export function codeInsight(sum) {
+  const top = sum.byCategory[0];
+  const kept = sum.moneyIn - sum.moneyOut - sum.fees;
+  return [
+    top ? `- Your biggest category was ${top[0]} at ${rwf(top[1])}.` : null,
+    `- Fees took ${rwf(sum.fees)}, ${(sum.feeShare * 100).toFixed(1)}% of what you sent.`,
+    kept > 0 ? `- ${rwf(kept)} is still with you.` : '- You sent more than you received this month.',
+  ].filter(Boolean).join('\n');
+}
+
+// Keep the model's words, not its arithmetic: a line that quotes a figure not in
+// the totals is dropped, and any preamble before the "- " lines is left out.
+export function guardInsight(text, sum) {
+  const allowed = allowedFigures(sum);
+  const ok = n => n <= 10 || allowed.some(a => Math.abs(a - n) <= Math.max(0.05, Math.abs(a) * 0.0005));
+  const lines = String(text).split('\n').map(s => s.trim()).filter(Boolean);
+  const bullets = lines.filter(l => /^[-•*]\s/.test(l));
+  const use = bullets.length >= 3 ? bullets : lines;
+  const kept = use.filter(l => numbersIn(l).every(ok));
+  if (kept.length >= 2) return { text: kept.join('\n'), dropped: use.length - kept.length };
+  return { text: codeInsight(sum), dropped: use.length };
+}

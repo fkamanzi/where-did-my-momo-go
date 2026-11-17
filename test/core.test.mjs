@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSms, categoryFromType, moneyFigures, reconcileNumbers } from '../src/parser.js';
 import { createRedactor } from '../src/redact.js';
-import { summarise } from '../src/insights.js';
+import { summarise, guardInsight } from '../src/insights.js';
 import { SAMPLE_SMS } from '../src/samples.js';
 
 test('sent message: amount, fee, balance, party, date', () => {
@@ -49,4 +49,21 @@ test('model figures are checked against the figures written in the message', () 
   assert.equal(fixed.amount, 10000); assert.equal(fixed.fee, 200); assert.equal(fixed.balance, 42950);
   const dropped = reconcileNumbers({ type: 'sent', direction: 'out', amount: 777, fee: 999, balance: 5, category: 'Other' }, sms);
   assert.equal(dropped.amount, 10000); assert.equal(dropped.fee, 0); assert.equal(dropped.balance, undefined);
+});
+
+test('insight lines that quote a figure not in the totals are left out', () => {
+  const txs = SAMPLE_SMS.map(parseSms).filter(Boolean).map(t => ({ ...t, category: categoryFromType(t) || 'Other' }));
+  const s = summarise(txs);
+  const model = [
+    "Here's a breakdown:",
+    `- You received RWF ${s.moneyIn.toLocaleString('en-US')} this month.`,
+    '- You have RWF 12,800 left.',
+    `- Fees were ${(s.feeShare * 100).toFixed(1)}% of what you sent.`,
+    '- Try moving a little to savings each week.',
+  ].join('\n');
+  const g = guardInsight(model, s);
+  assert.equal(g.dropped, 1);
+  assert.ok(!g.text.includes('12,800'));
+  assert.ok(!g.text.includes('breakdown'));
+  assert.equal(g.text.split('\n').length, 3);
 });

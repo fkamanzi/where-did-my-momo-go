@@ -12,6 +12,7 @@ import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, Schema } from 'firebase/ai';
 import { CATEGORIES, reconcileNumbers } from './parser.js';
+import { guardInsight } from './insights.js';
 
 let ai = null;
 // ?mode=cloud turns the on-device model off, to show the masked cloud path on any browser.
@@ -213,6 +214,7 @@ export async function writeInsights(summary, redactor) {
   const safe = {
     moneyIn: summary.moneyIn, moneyOut: summary.moneyOut, fees: summary.fees,
     feeSharePercent: Math.round(summary.feeShare * 1000) / 10,
+    stillWithYou: summary.moneyIn - summary.moneyOut - summary.fees,
     byCategory: summary.byCategory,
     topParties: summary.topParties.map(([p, v]) => [redactor.redactParty(p), v]),
   };
@@ -225,6 +227,7 @@ ${JSON.stringify(safe)}`;
   }
   if (!r) r = (await cloudOnly(CLOUD_PROSE).generateContent(prompt)).response;
   state.lastSource = r.inferenceSource || 'in_cloud';
-  const text = redactor.restore(r.text()).trim().replace(/\n\s*\n+/g, '\n');
+  const { text, dropped } = guardInsight(redactor.restore(r.text()), summary);
+  if (dropped) console.info(`Left out ${dropped} insight line(s) quoting a figure not in the totals`);
   return { text, source: state.lastSource };
 }
