@@ -14,7 +14,9 @@ import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, Schema } fro
 import { CATEGORIES } from './parser.js';
 
 let ai = null;
-export const state = { connected: false, onDevice: 'unknown', lastSource: null, onDeviceFails: 0 };
+// ?mode=cloud turns the on-device model off, to show the masked cloud path on any browser.
+const FORCE_CLOUD = new URLSearchParams(self.location?.search || '').get('mode') === 'cloud';
+export const state = { connected: false, onDevice: 'unknown', lastSource: null, onDeviceFails: 0, forceCloud: FORCE_CLOUD };
 
 export async function connect() {
   let config;
@@ -53,7 +55,7 @@ let onDeviceCalls = 0;
 // Use the on-device model only when it is ready and has not just failed twice
 // in a row; otherwise the masked cloud path answers so the app never waits.
 async function onDeviceReady() {
-  return state.onDeviceFails < 2 && (await checkOnDevice()) === 'available';
+  return !FORCE_CLOUD && state.onDeviceFails < 2 && (await checkOnDevice()) === 'available';
 }
 export function startRun() { state.onDeviceFails = 0; }
 
@@ -192,7 +194,7 @@ Categories: ${CATEGORIES.join(', ')}. Answer with the category name only.`;
     } catch { /* fall through to the masked cloud path */ }
   }
   const r = await cloudOnly(CLOUD_LABEL).generateContent(prompt(partyForCloud));
-  return { category: pickCategory(r.response.text()), source: 'cloud-masked' };
+  return { category: pickCategory(r.response.text()), source: 'cloud-masked', sentText: `${tx.type} of ${tx.amount} RWF to "${partyForCloud}"` };
 }
 
 function pickCategory(text) {

@@ -14,7 +14,9 @@ See where your mobile money went, from the SMS your wallet already sends you. Bu
 | Categorise a counterparty | the name, or a pseudonym for individuals in the cloud | `ONLY_ON_DEVICE`, then `ONLY_IN_CLOUD` (masked) | businesses keep their names, people do not |
 | Write insights | totals and pseudonyms only | `PREFER_ON_DEVICE` (the SDK's automatic cloud fallback) | nothing personal in the prompt |
 
-Every figure on screen (totals, fees, fee share, biggest outflow) is computed by plain code in `src/insights.js`; the model words the insights but cannot invent numbers. Each row and the insight card show where they ran: **On this device**, **Cloud, names masked**, **Cloud, totals only** or **Read by rules**. Code: `src/ai.js` imports `firebase/ai` and calls `getGenerativeModel(ai, { mode: InferenceMode.… , onDeviceParams, inCloudParams })` at runtime, with a JSON `responseConstraint` on device and a `responseSchema` in the cloud.
+Every figure on screen (totals, fees, fee share, biggest outflow) is computed by plain code in `src/insights.js`; the model words the insights but cannot invent numbers. Each row and the insight card show where they ran: **On this device**, **Cloud, names masked**, **Cloud, totals only** or **Read by rules**. Code: `src/ai.js` imports `firebase/ai` and calls `getGenerativeModel(ai, { mode: InferenceMode.… , onDeviceParams, inCloudParams })` at runtime. Each on-device task has its own `responseConstraint` (the transaction JSON schema for reading, the category enum for categorising, none for insights) and the cloud read uses a `responseSchema`. On-device sessions are text-only, a slow on-device prompt is aborted after a time limit so it never blocks the next message, and one warm session keeps Gemini Nano in memory.
+
+**See both paths:** open the live demo as is to see Gemini Nano on your device, or add `?mode=cloud` (https://where-did-my-momo-go.web.app/?mode=cloud) to switch the on-device model off and watch the masked cloud path. After a run, open **What left this device** under the table: it lists the exact masked text each cloud call carried.
 
 ## Run it
 

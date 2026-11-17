@@ -56,6 +56,7 @@ function river(sum) {
 }
 
 function render(txs, sum, insight) {
+  const sent = txs.filter(t => t.sentText);
   const rows = txs.map(t => `<tr>
       <td>${esc(t.when ? t.when.replace('T', ' ') : '')}</td>
       <td>${esc(t.type)}</td>
@@ -79,7 +80,9 @@ function render(txs, sum, insight) {
       <h2>Every message</h2>
       <table><thead><tr><th>When</th><th>Type</th><th>Who</th><th>Amount</th><th>Fee</th><th>Category</th><th>Read</th></tr></thead>
       <tbody>${rows}</tbody></table>
-    </section>`;
+    </section>
+    ${sent.length ? `<details class="card sent"><summary>What left this device: ${sent.length} cloud call${sent.length > 1 ? 's' : ''}, names and numbers masked</summary>
+      <ol>${sent.map(t => `<li><code>${esc(t.sentText)}</code></li>`).join('')}</ol></details>` : ''}`;
 }
 
 const SOURCE_WORDS = { 'rules': 'by rules', 'on-device': 'on this device', 'cloud-masked': 'in the cloud, masked' };
@@ -110,6 +113,7 @@ async function analyse() {
           const c = await categorise(tx, redactor);
           tx.category = c.category;
           if (tx.source === 'rules') tx.source = c.source;
+          if (c.sentText) tx.sentText = c.sentText;
         } catch (e) { console.warn(e); }
       }
       if (!tx.category) tx.category = tx.direction === 'in' ? 'Income' : 'Other';
@@ -134,7 +138,9 @@ async function boot() {
   const ok = await connect();
   const show = (dev) => {
     $('#ai-state').innerHTML = ok
-      ? `Firebase AI connected · on-device model: <b>${esc(dev)}</b>` +
+      ? state.forceCloud
+        ? `Firebase AI connected · on-device model: <b>off</b> (cloud demo, names masked)`
+        : `Firebase AI connected · on-device model: <b>${esc(dev)}</b>` +
         (dev === 'downloadable' ? ' <button id="nano" class="ghost">Download Gemini Nano (one time)</button>' : '') +
         (dev === 'downloading' ? ' (until it finishes, messages use the masked cloud path)' : '')
       : 'Rules only: add firebase-config.json to turn on AI (see README).';

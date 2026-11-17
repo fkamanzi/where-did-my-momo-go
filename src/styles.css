@@ -36,3 +36,8 @@ td.in { color: var(--in); } td.out { color: var(--out); }
 .insight #insight { font-size: 15px; }
 footer { color: var(--muted); font-size: 13px; padding-bottom: 32px; }
 @media (max-width: 640px) { th:nth-child(1), td:nth-child(1), th:nth-child(5), td:nth-child(5) { display:none; } }
+
+details.sent summary { cursor: pointer; font-weight: 600; }
+details.sent ol { margin: .75rem 0 0; padding-left: 1.25rem; }
+details.sent li { margin: .35rem 0; }
+details.sent code { font-size: .85rem; white-space: pre-wrap; word-break: break-word; color: #c9d1d9; }
