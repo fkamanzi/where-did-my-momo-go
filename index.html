@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Where Did My MoMo Go?</title>
+  <meta name="description" content="See where your mobile money went. Your SMS are read on your device; anything sent to the cloud is masked first." />
+</head>
+<body>
+  <header>
+    <h1>Where Did My MoMo Go?</h1>
+    <p class="tag">Your mobile money, explained. Messages are read on this device; anything sent to the cloud is masked first.</p>
+    <p id="ai-state" class="state">Connecting…</p>
+  </header>
+  <main>
+    <section class="card">
+      <label for="sms">Paste your MoMo SMS, one per line</label>
+      <textarea id="sms" rows="8" placeholder="You have transferred 5,000 RWF to …"></textarea>
+      <div class="row">
+        <button id="sample" class="ghost">Use sample messages</button>
+        <button id="go">Show me where it went</button>
+      </div>
+      <p id="status" class="state"></p>
+    </section>
+    <div id="results"></div>
+  </main>
+  <footer>Hybrid AI with Firebase AI Logic · Gemini Nano on device, Gemini in the cloud with names masked · Sample messages are invented.</footer>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

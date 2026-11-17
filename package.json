@@ -1,0 +1,26 @@
+{
+  "name": "where-did-my-momo-go",
+  "version": "1.0.0",
+  "description": "See where your mobile money went: MoMo SMS read on-device with Firebase AI Logic hybrid inference, masked cloud fallback.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/core.test.mjs"
+  },
+  "keywords": [],
+  "author": "Frutos Kamanzi",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "firebase": "^13.4.0"
+  },
+  "type": "module",
+  "devDependencies": {
+    "vite": "^8.3.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fkamanzi/where-did-my-momo-go"
+  },
+  "homepage": "https://fkamanzi.github.io/where-did-my-momo-go/"
+}
